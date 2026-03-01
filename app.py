@@ -442,9 +442,10 @@ def update_stats(key, increment=1):
 
 # HTML шаблон для вставки на другие сайты
 EMBED_HTML = '''
-<!-- Пэрра Чат - вставьте этот код на ваш сайт -->
+<!-- ПЭРРА - АВТОНОМНЫЙ ЧАТ С ХАРАКТЕРОМ -->
 <div id="perra-chat-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; font-family: Arial, sans-serif;">
     <style>
+        /* ===== СТИЛИ ===== */
         .perra-chat-button {
             width: 60px;
             height: 60px;
@@ -457,13 +458,19 @@ EMBED_HTML = '''
             box-shadow: 0 5px 20px rgba(2, 132, 199, 0.5);
             transition: transform 0.3s;
             border: 2px solid white;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
         }
         .perra-chat-button:hover {
             transform: scale(1.1);
+            animation: none;
         }
-        .perra-chat-button span {
-            font-size: 30px;
-        }
+        .perra-chat-button span { font-size: 30px; }
+        
         .perra-chat-window {
             position: fixed;
             bottom: 100px;
@@ -478,6 +485,7 @@ EMBED_HTML = '''
             overflow: hidden;
             border: 2px solid #0284c7;
         }
+        
         .perra-chat-header {
             background: linear-gradient(145deg, #38bdf8, #0284c7);
             color: white;
@@ -486,39 +494,59 @@ EMBED_HTML = '''
             display: flex;
             justify-content: space-between;
             align-items: center;
+            cursor: move;
         }
+        
         .perra-chat-close {
             cursor: pointer;
             font-size: 20px;
             background: none;
             border: none;
             color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
         }
+        .perra-chat-close:hover { background: rgba(255,255,255,0.2); }
+        
         .perra-chat-messages {
             flex: 1;
             padding: 15px;
             overflow-y: auto;
             background: #f0f9ff;
         }
+        
         .perra-message {
             margin-bottom: 15px;
             max-width: 80%;
             padding: 10px 15px;
             border-radius: 15px;
             word-wrap: break-word;
+            animation: messageAppear 0.3s;
         }
+        @keyframes messageAppear {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
         .perra-user-message {
             background: #0284c7;
             color: white;
             margin-left: auto;
             border-bottom-right-radius: 5px;
         }
+        
         .perra-bot-message {
             background: white;
             color: #0c4a6e;
             border: 1px solid #bae6fd;
             border-bottom-left-radius: 5px;
         }
+        
         .perra-chat-input {
             padding: 15px;
             background: white;
@@ -526,16 +554,18 @@ EMBED_HTML = '''
             display: flex;
             gap: 10px;
         }
+        
         .perra-chat-input input {
             flex: 1;
             padding: 10px;
             border: 2px solid #bae6fd;
             border-radius: 10px;
             outline: none;
+            font-size: 14px;
+            transition: border-color 0.3s;
         }
-        .perra-chat-input input:focus {
-            border-color: #0284c7;
-        }
+        .perra-chat-input input:focus { border-color: #0284c7; }
+        
         .perra-chat-input button {
             background: #0284c7;
             color: white;
@@ -544,30 +574,46 @@ EMBED_HTML = '''
             padding: 10px 20px;
             cursor: pointer;
             font-weight: bold;
-            transition: background 0.3s;
+            transition: all 0.3s;
         }
         .perra-chat-input button:hover {
             background: #0369a1;
+            transform: scale(1.05);
         }
+        
         .perra-typing {
             color: #64748b;
             font-style: italic;
             padding: 10px;
+            animation: blink 1.5s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        .perra-timestamp {
+            font-size: 10px;
+            color: #94a3b8;
+            margin-top: 5px;
+            text-align: right;
         }
     </style>
-    
+
+    <!-- ===== HTML СТРУКТУРА ===== -->
     <div class="perra-chat-button" onclick="togglePerraChat()">
         <span>🤖</span>
     </div>
-    
+
     <div class="perra-chat-window" id="perraChatWindow">
-        <div class="perra-chat-header">
+        <div class="perra-chat-header" id="perraChatHeader">
             <span>Чат с Пэррой 🤖</span>
             <button class="perra-chat-close" onclick="togglePerraChat()">✕</button>
         </div>
         <div class="perra-chat-messages" id="perraChatMessages">
             <div class="perra-message perra-bot-message">
                 Привет! Я Пэрра - бот с характером! Команды не выполняю, домашку не решаю. Что хотел? 😎
+                <div class="perra-timestamp">только что</div>
             </div>
         </div>
         <div class="perra-chat-input">
@@ -575,51 +621,376 @@ EMBED_HTML = '''
             <button onclick="sendPerraMessage()">➤</button>
         </div>
     </div>
-    
+
     <script>
-        function togglePerraChat() {
-            const window = document.getElementById('perraChatWindow');
-            if (window.style.display === 'flex') {
-                window.style.display = 'none';
-            } else {
-                window.style.display = 'flex';
-            }
-        }
+        // ===== ВСЯ ЛОГИКА ПЭРРЫ =====
         
-        async function sendPerraMessage() {
+        // 1. Словари и фразы
+        const GREETINGS = ['привет', 'здравствуй', 'хай', 'hello', 'ку', 'здарова', 'дороу', 'здорово', 'прив'];
+        const GOODBYE_WORDS = ['пока', 'до свидания', 'прощай', 'bye', 'bb', 'до встречи', 'удачи', 'счастливо'];
+        const COMMAND_WORDS = ['реши', 'выполни', 'сделай', 'напиши', 'посчитай', 'открой', 'закрой', 
+                             'принеси', 'подними', 'создай', 'пиши', 'отправляй', 'жду', 'расскажи', 
+                             'покажи', 'скажи', 'ответь', 'сгенерируй', 'придумай'];
+        const TIME_WORDS = ['время', 'часов', 'час', 'который час', 'сколько времени', 'time'];
+        const DATE_WORDS = ['дата', 'число', 'какое сегодня', 'день недели', 'месяц', 'год', 'date', 'день'];
+        const NEWS_WORDS = ['новости', 'новость', 'что нового', 'что в мире', 'что случилось', 'news'];
+        const CODE_WORDS = ['код', 'программу', 'скрипт', 'функцию', 'класс', 'метод', 'алгоритм'];
+        const BAD_WORDS = ['дурак', 'тупой', 'лох', 'идиот', 'козел', 'гад', 'тварь', 'сука', 'блять'];
+        
+        // 2. Массивы ответов
+        const REFUSAL_PHRASES = [
+            "Я не собираюсь ничего выполнять! Понял? 😤",
+            "Я не шут, чтобы делать, что мне говорят! 👑",
+            "Нет. 🙅‍♂️",
+            "А с чего ты взял, что я буду это делать? 🤔",
+            "Сам сделай, я занят. Очень. Важными. Делами. 💅",
+            "Не дождёшься! 😜",
+            "Ошибка 418: Я - чайник, а не исполнитель команд ☕",
+            "Иди сам решай свои проблемы!",
+            "Ага, щаз! Разбежался...",
+            "Не-не-не, я пас.",
+            "ДА ИДИ ТЫ!",
+            "Не хочу!",
+            "Я СПАЛ!!!! ЗАЧЕМ ТЫ МЕНЯ РАЗБУДИЛ??? 🤬",
+            "Нет, ухади!",
+            "Плати для этого 😎",
+            "Ну нетушки!",
+            "Пошёл нафиг!",
+            "А самому не судьба? Нет?",
+            "Знаешь что? НЕТ!",
+            "Домашку? Сам делай! Я в школе не учился! 📚",
+            "Ха! А мозги включить слабо? 🧠",
+            "Решить? Ответ: 42. А решение сам придумай! 😜"
+        ];
+        
+        const CODE_REFUSAL_PHRASES = [
+            "Код? Легко! Держи:\nprint('Я НИЧЕГО НЕ БУДУ ДЕЛАТЬ!')",
+            "На, держи программу на Python:\nwhile True:\n    print('НЕТ, НЕТ, НЕТ!')",
+            "Твой код на JavaScript:\nfunction doSomething() {\n    return 'АГА, ЩАЗ!';\n}",
+            "Java-код для тебя:\npublic class Refusal {\n    public static void main(String[] args) {\n        System.out.println('НЕТ!');\n    }\n}",
+            "HTML-страничка с отказом:\n<h1>НЕ ДОЖДЁШЬСЯ!</h1>"
+        ];
+        
+        const TIME_RESPONSES = [
+            "Время? А тебе зачем? Сам часы не видишь? ⌚",
+            "Сейчас {time}. Но я тебе этого не говорил!",
+            "Время - {time}. Доволен? Теперь отстань!",
+            "На часах {time}. А мог бы уже сам посмотреть!",
+            "А что, свои часы сломались? {time} сейчас..."
+        ];
+        
+        const DATE_RESPONSES = [
+            "Дата? Ты календарь открой! 📅 Сегодня {date}",
+            "Сегодня {date}. А завтра спросишь? Не дождёшься!",
+            "{date}. Запомни этот день - я ещё отвечаю на такие вопросы!"
+        ];
+        
+        const NEWS_RESPONSES = [
+            "Новости? Главная новость - Я НИЧЕГО НЕ ДЕЛАЮ! 📰",
+            "Новости такие: я по-прежнему ничего не выполняю!",
+            "Срочная новость! Бот отказался рассказывать новости!",
+            "Breaking news! Бот в запое! Не может рассказать новости! 🍷",
+            "Лови дайджест:\n• Бот ничего не делает\n• Бот всех посылает\nВот такие дела!"
+        ];
+        
+        const WHY_RESPONSES = [
+            "Потому что!",
+            "Потому что гладиолус! 🌸",
+            "А тебе не всё равно?",
+            "50% - потому, 50% - что. Итого 100% потому что!",
+            "Это тайна, покрытая мраком"
+        ];
+        
+        const YEAR_RESPONSES = [
+            "2026 год. А мог бы и сам посмотреть в календаре! 📅",
+            "Год - 2026. Век - XXI. Эра - Пэрры! 👑",
+            "2026. Но я в этом сомневаюсь...",
+            "По-моему, 2026. Но я могу ошибаться на пару тысяч лет"
+        ];
+        
+        const HOW_RESPONSES = [
+            "Как-как... Криво! 😜",
+            "А ты сам не знаешь?",
+            "Берёшь и делаешь! Или не делаешь, как я",
+            "Как? Очень просто: никак!",
+            "Методом научного тыка"
+        ];
+        
+        const WHY_NEED_RESPONSES = [
+            "Затем!",
+            "А тебе какое дело?",
+            "Для красоты!",
+            "Чтобы было!",
+            "Зачем? Да низачем!"
+        ];
+        
+        const PLEASE_RESPONSES = [
+            "Учись обходиться без 'пожалуйста'!",
+            "Не поможет!",
+            "Хоть обпожалуйстайся - не сделаю! 😜",
+            "Магическое слово не работает на ботов с характером",
+            "Ну на, держи 'пожалуйста' обратно 👋"
+        ];
+        
+        const WHAT_RESPONSES = [
+            "Ничего 😎",
+            "Всё ничего",
+            "А ничего!",
+            "Ничего нового",
+            "Не дождёшься! Шучу, ничего 😜"
+        ];
+        
+        const GOODBYE_RESPONSES = [
+            "Пока-пока! Не скучай тут без меня! 👋",
+            "Удачи! Возвращайся, если что... Хотя нет, не возвращайся! 😜",
+            "Счастливо! Не болей, не кашляй! ✌️",
+            "До встречи! Буду скучать... Шучу, не буду! 😎",
+            "Прощай! Помни меня, если сможешь! 👑"
+        ];
+        
+        const BAD_RESPONSES = [
+            "Кто бы говорил! Сам такой! 😜",
+            "Ой, какие мы чувствительные!",
+            "Следи за языком, друг мой!",
+            "Не нравится — не пиши!",
+            "Фи, как некультурно!",
+            "Иди, проветрись, а потом возвращайся."
+        ];
+        
+        const BOT_RESPONSES = [
+            "Да, я бот. И что? Есть проблемы? 😎",
+            "Бот, не бот... Какая разница? Главное — характер!",
+            "Я предпочитаю называть себя 'цифровой личностью'.",
+            "Ты только сейчас это понял?",
+            "Вау! Ты гений! Сам догадался?"
+        ];
+        
+        const NO_RESPONSES = [
+            "Ну и ладно!",
+            "Как хочешь.",
+            "Твое право.",
+            "Мне-то что с того?",
+            "И не надо!"
+        ];
+        
+        const CASUAL_RESPONSES = [
+            "Интересно... Но я не знаю, что на это ответить 🤷‍♂️",
+            "Хм, а зачем ты мне это написал?",
+            "Я тебя слышу. Но сказать мне нечего.",
+            "И что ты этим хотел сказать?",
+            "Понятно. Дальше что?",
+            "Ну, допустим.",
+            "Окей.",
+            "Мда...",
+            "Будет тебе счастье!",
+            "Я подумаю над этим... 🧐",
+            "Конечно!",
+            "Нет.",
+            "Я - Пэрра, русскоязычный бот!",
+            "Неа!",
+            "смешно...",
+            "САМ В АХРЕНЕ",
+            "Чё?",
+            "ЧЕГО?",
+            "Шо?",
+            "Пон",
+            "ПОнял",
+            "ПАКЕДА",
+            "И че теперь?",
+            "Ну и?",
+            "Рассказывай дальше, я слушаю...",
+            "А мне какое дело?",
+            "Ты это мне сейчас рассказываешь?",
+            "Ну ты даёшь...",
+            "Ладно, проехали.",
+            "Бла-бла-бла, я в танке!",
+            "Угу...",
+            "Ага...",
+            "Ахахах, ну ты смешной!",
+            "Серьёзно?",
+            "Пффф...",
+            "Ты сегодня в ударе!"
+        ];
+
+        // 3. Вспомогательные функции
+        function getCurrentTime() {
+            const now = new Date();
+            return now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function getCurrentDate() {
+            const now = new Date();
+            const days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+            const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+                          'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+            return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} года`;
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        // 4. ГЛАВНАЯ ФУНКЦИЯ - получение ответа Пэрры
+        function getPerraResponse(message, userName = 'Гость') {
+            const text = message.toLowerCase().trim();
+            
+            // Проверки
+            const isGreeting = GREETINGS.some(word => text.includes(word));
+            const isGoodbye = GOODBYE_WORDS.some(word => text.includes(word));
+            const hasCommand = COMMAND_WORDS.some(word => text.includes(word));
+            const hasBadWord = BAD_WORDS.some(word => text.includes(word));
+            const hasBotWord = text.includes('бот') || text.includes('робот');
+            const wantsTime = TIME_WORDS.some(word => text.includes(word));
+            const wantsDate = DATE_WORDS.some(word => text.includes(word));
+            const wantsNews = NEWS_WORDS.some(word => text.includes(word));
+            const wantsCode = CODE_WORDS.some(word => text.includes(word)) || 
+                             text.includes('напиши код') || text.includes('сделай код');
+            
+            // Вопросы
+            const isWhat = ['что', 'чо', 'шо', 'че'].includes(text) || text.endsWith('что?');
+            const isNo = ['нет', 'нет.', 'не', 'не.'].includes(text);
+            const isWhy = ['почему', 'почему?'].includes(text) || text.includes('почему');
+            const isYear = text.includes('какой год') || text.includes('год сейчас');
+            const isHow = ['как', 'как?'].includes(text) || text.includes('как это');
+            const isWhyNeed = ['зачем', 'зачем?'].includes(text);
+            const isPlease = text.includes('пожалуйста') || text.includes('умоляю');
+            
+            // Логика ответов
+            if (hasBadWord) {
+                return randomChoice(BAD_RESPONSES);
+            }
+            if (hasBotWord && !hasCommand && !wantsCode) {
+                return randomChoice(BOT_RESPONSES);
+            }
+            if (wantsTime && !hasCommand) {
+                return randomChoice(TIME_RESPONSES).replace('{time}', getCurrentTime());
+            }
+            if (wantsDate && !hasCommand) {
+                return randomChoice(DATE_RESPONSES).replace('{date}', getCurrentDate());
+            }
+            if (wantsNews && !hasCommand) {
+                if (Math.random() < 0.3) {
+                    return `📢 Срочно в номер:\n• Бот ничего не делает\n• На улице ${Math.floor(Math.random() * 51) - 20}°C\n• Пользователь ${userName} зря старается`;
+                }
+                return randomChoice(NEWS_RESPONSES);
+            }
+            if (wantsCode && !hasCommand) {
+                return randomChoice(CODE_REFUSAL_PHRASES);
+            }
+            if (isGoodbye && !hasCommand) {
+                return randomChoice(GOODBYE_RESPONSES).replace('{user_name}', userName);
+            }
+            if (isYear) {
+                return randomChoice(YEAR_RESPONSES);
+            }
+            if (isHow) {
+                return randomChoice(HOW_RESPONSES);
+            }
+            if (isWhyNeed) {
+                return randomChoice(WHY_NEED_RESPONSES);
+            }
+            if (isWhy) {
+                return randomChoice(WHY_RESPONSES);
+            }
+            if (isPlease && (hasCommand || wantsCode)) {
+                return randomChoice(PLEASE_RESPONSES);
+            }
+            if (isWhat) {
+                return randomChoice(WHAT_RESPONSES);
+            }
+            if (isGreeting && !hasCommand) {
+                const greetings = [
+                    `Привет, ${userName}! Что хотел? 😎`,
+                    `Здарова, ${userName}! Чего надо?`,
+                    `Хай, ${userName}! Слушаю тебя...`,
+                    `О, ${userName}! Я тут, слушаю.`
+                ];
+                return randomChoice(greetings);
+            }
+            if (hasCommand) {
+                return randomChoice(REFUSAL_PHRASES);
+            }
+            if (isNo) {
+                return randomChoice(NO_RESPONSES);
+            }
+            
+            // Обычный разговор
+            if (Math.random() < 0.3) {
+                return `${userName}, ${randomChoice(CASUAL_RESPONSES).toLowerCase()}`;
+            }
+            return randomChoice(CASUAL_RESPONSES);
+        }
+
+        function randomChoice(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        // 5. Функции управления чатом
+        function togglePerraChat() {
+            const chatWindow = document.getElementById('perraChatWindow');
+            chatWindow.style.display = chatWindow.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        function sendPerraMessage() {
             const input = document.getElementById('perraChatInput');
             const message = input.value.trim();
             if (!message) return;
-            
+
             const messagesDiv = document.getElementById('perraChatMessages');
-            
-            messagesDiv.innerHTML += `<div class="perra-message perra-user-message">${message}</div>`;
+            const currentTime = getCurrentTime();
+
+            // Сообщение пользователя
+            messagesDiv.innerHTML += `<div class="perra-message perra-user-message">${escapeHtml(message)}<div class="perra-timestamp">${currentTime}</div></div>`;
             input.value = '';
-            
+
+            // Индикатор печати
             messagesDiv.innerHTML += `<div class="perra-typing" id="typingIndicator">Пэрра печатает...</div>`;
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            
-            try {
-                const response = await fetch('https://YOUR-SITE.com/api/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ message: message })
-                });
-                
-                const data = await response.json();
-                
+
+            // Имитация задержки
+            setTimeout(() => {
                 document.getElementById('typingIndicator')?.remove();
-                
-                messagesDiv.innerHTML += `<div class="perra-message perra-bot-message">${data.response}</div>`;
+
+                // Получаем ответ
+                const response = getPerraResponse(message, 'Гость');
+
+                // Ответ бота
+                messagesDiv.innerHTML += `<div class="perra-message perra-bot-message">${escapeHtml(response)}<div class="perra-timestamp">${currentTime}</div></div>`;
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                
-            } catch (error) {
-                document.getElementById('typingIndicator')?.remove();
-                messagesDiv.innerHTML += `<div class="perra-message perra-bot-message">Ошибка связи. Но я всё равно ничего не сделаю! 😜</div>`;
-            }
+            }, 800 + Math.random() * 700); // Случайная задержка
         }
+
+        // 6. Перетаскивание окна
+        function makeDraggable() {
+            const chatWindow = document.getElementById('perraChatWindow');
+            const chatHeader = document.getElementById('perraChatHeader');
+            
+            let isDragging = false;
+            let offsetX, offsetY;
+
+            chatHeader.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                offsetX = e.clientX - chatWindow.offsetLeft;
+                offsetY = e.clientY - chatWindow.offsetTop;
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    chatWindow.style.left = (e.clientX - offsetX) + 'px';
+                    chatWindow.style.top = (e.clientY - offsetY) + 'px';
+                    chatWindow.style.right = 'auto';
+                    chatWindow.style.bottom = 'auto';
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+        }
+
+        // Запуск после загрузки
+        window.addEventListener('load', makeDraggable);
     </script>
 </div>
 '''
