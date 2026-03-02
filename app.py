@@ -1003,6 +1003,7 @@ TEMPLATE = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Пэрра ИИ | Бот с характером</title>
+    <link rel="icon" href="/static/1000162143-fotor-bg-remover-2026030214294.png" type="image/png">
     <style>
         * {
             margin: 0;
