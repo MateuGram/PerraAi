@@ -1477,7 +1477,7 @@ TEMPLATE = '''
     <div class="container">
         <div class="header">
             <div class="bot-avatar">
-                🤖
+                <img src="/static/1000162143-fotor-bg-remover-2026030214294.png" alt="Пэрра" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
             </div>
             <div class="bot-info">
                 <div class="bot-name">Пэрра ИИ</div>
