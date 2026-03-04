@@ -704,6 +704,13 @@ TEMPLATE = '''
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Пэрра ИИ | Бот с характером</title>
     <link rel="icon" href="/static/1000162143-fotor-bg-remover-2026030214294.png" type="image/png">
+    
+    <!-- PWA Support -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0284c7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    
     <style>
         * {
             margin: 0;
@@ -1234,7 +1241,7 @@ TEMPLATE = '''
                     {% for msg in current_chat %}
                     <div class="message {{ 'user-message' if msg.sender == 'user' else 'bot-message' }}">
                         {{ msg.text }}
-                        <div class="perra-timestamp">{{ msg.time }}</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 5px;">{{ msg.time }}</div>
                     </div>
                     {% endfor %}
                 </div>
@@ -1266,6 +1273,15 @@ TEMPLATE = '''
         let currentChatId = '{{ current_chat_id }}';
         let messages = {{ current_chat|tojson }};
         
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then(reg => console.log('✅ PWA ready!'))
+                    .catch(err => console.log('❌ PWA error:', err));
+            });
+        }
+        
         function setUserName() {
             const name = document.getElementById('userName').value.trim();
             if (name) {
@@ -1287,7 +1303,7 @@ TEMPLATE = '''
             const messagesDiv = document.getElementById('chatMessages');
             const currentTime = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
             
-            messagesDiv.innerHTML += `<div class="message user-message">${escapeHtml(message)}<div class="perra-timestamp">${currentTime}</div></div>`;
+            messagesDiv.innerHTML += `<div class="message user-message">${escapeHtml(message)}<div style="font-size: 10px; color: #94a3b8; margin-top: 5px;">${currentTime}</div></div>`;
             input.value = '';
             
             messagesDiv.innerHTML += `<div class="typing-indicator" id="typingIndicator">Пэрра печатает...</div>`;
@@ -1306,14 +1322,14 @@ TEMPLATE = '''
                 const data = await response.json();
                 
                 document.getElementById('typingIndicator')?.remove();
-                messagesDiv.innerHTML += `<div class="message bot-message">${escapeHtml(data.response)}<div class="perra-timestamp">${currentTime}</div></div>`;
+                messagesDiv.innerHTML += `<div class="message bot-message">${escapeHtml(data.response)}<div style="font-size: 10px; color: #94a3b8; margin-top: 5px;">${currentTime}</div></div>`;
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
                 
                 messages = data.messages;
                 
             } catch (error) {
                 document.getElementById('typingIndicator')?.remove();
-                messagesDiv.innerHTML += `<div class="message bot-message">Ошибка связи. Но я всё равно ничего не сделаю! 😜<div class="perra-timestamp">${currentTime}</div></div>`;
+                messagesDiv.innerHTML += `<div class="message bot-message">Ошибка связи. Но я всё равно ничего не сделаю! 😜<div style="font-size: 10px; color: #94a3b8; margin-top: 5px;">${currentTime}</div></div>`;
             }
         }
         
