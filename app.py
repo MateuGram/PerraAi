@@ -1512,4 +1512,4 @@ if __name__ == '__main__':
     print("❌ Ctrl+C для остановки")
     print("-" * 50)
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=9876)
