@@ -1,21 +1,26 @@
-# app.py - Сайт Пэрры с веб-чатом (без Telegram)
+# app.py - Сайт Пэрры с сохранением чатов и именами
 
-from flask import Flask, render_template_string, request, redirect, url_for, flash, send_from_directory, jsonify
+from flask import Flask, render_template_string, request, redirect, url_for, flash, send_from_directory, jsonify, session
 import os
 import random
 import datetime
 import json
+import uuid
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = 'perra-ai-secret-key-2026'
 
-# Настройки загрузки
+# Настройки загрузки (оставляем, но не используем на сайте)
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+
+# Папка для сохранения чатов
+CHATS_FOLDER = 'saved_chats'
+os.makedirs(CHATS_FOLDER, exist_ok=True)
 
 # Глобальная переменная для хранения текущей версии
 current_version = "5.0"
@@ -23,7 +28,7 @@ current_version = "5.0"
 # Статистика посещений
 if not os.path.exists('stats.json'):
     with open('stats.json', 'w') as f:
-        json.dump({'visits': 0, 'uploads': 0, 'refusals': 0, 'chat_messages': 0}, f)
+        json.dump({'visits': 0, 'refusals': 0, 'chat_messages': 0, 'saved_chats': 0}, f)
 
 # Приветствия
 GREETINGS = ['привет', 'здравствуй', 'хай', 'hello', 'ку', 'здарова', 'дороу', 'здорово', 'прив']
@@ -89,14 +94,14 @@ REFUSAL_PHRASES = [
     "Я за 5 класс давно всё забыл! Иди к Гуглу! 🔍"
 ]
 
-# Фразы для отказа от написания кода (с "кодом-троллем")
+# Фразы для отказа от написания кода
 CODE_REFUSAL_PHRASES = [
     "Код? Легко! Держи:\nprint('Я НИЧЕГО НЕ БУДУ ДЕЛАТЬ!')",
     "На, держи программу на Python:\nwhile True:\n    print('НЕТ, НЕТ, НЕТ!')",
-    "Твой код на JavaScript:\nfunction doSomething() {\n    return 'АГА, ЩАЗ!';\n}\nconsole.log(doSomething());",
+    "Твой код на JavaScript:\nfunction doSomething() {\n    return 'АГА, ЩАЗ!';\n}",
     "Вот программа на C++:\n#include <iostream>\nint main() {\n    std::cout << 'НЕ БУДУ!' << std::endl;\n    return 0;\n}",
     "Java-код для тебя:\npublic class Refusal {\n    public static void main(String[] args) {\n        System.out.println('НЕТ, Я ОТКАЗЫВАЮСЬ!');\n    }\n}",
-    "HTML-страничка с отказом:\n<!DOCTYPE html>\n<html>\n<head>\n    <title>Отказ</title>\n</head>\n<body>\n    <h1>НЕ ДОЖДЁШЬСЯ!</h1>\n    <p>Я ничего не буду писать!</p>\n</body>\n</html>"
+    "HTML-страничка с отказом:\n<h1>НЕ ДОЖДЁШЬСЯ!</h1>"
 ]
 
 # Фразы для ответов на вопросы о времени
@@ -124,12 +129,9 @@ DATE_RESPONSES = [
 NEWS_RESPONSES = [
     "Новости? А ты разве не знаешь? Главная новость - Я НИЧЕГО НЕ ДЕЛАЮ! 📰",
     "Новости такие: я по-прежнему ничего не выполняю! А что там в мире... мне плевать! 😎",
-    "Срочная новость! Бот отказался рассказывать новости! Подробности в 20:00!",
-    "Новостей нет. Всё плохо. Все идут нафиг. Особенно те, кто просит новости!",
+    "Срочная новость! Бот отказался рассказывать новости!",
     "Breaking news! Бот в запое! Не может рассказать новости! 🍷",
-    "В мире произошло событие: кто-то попросил бота рассказать новости. Бот послал его!",
-    "Новости: Ты задолбал! А теперь серьёзно - иди сам новости читай!",
-    "Лови дайджест новостей:\n• Бот ничего не делает\n• Бот никого не слушается\n• Бот всех посылает\nВот такие дела!"
+    "Лови дайджест:\n• Бот ничего не делает\n• Бот всех посылает\nВот такие дела!"
 ]
 
 # Ответы на "Почему?"
@@ -137,14 +139,8 @@ WHY_RESPONSES = [
     "Потому что!",
     "Потому что гладиолус! 🌸",
     "А тебе не всё равно?",
-    "Не знаю, я просто бот с характером!",
-    "Почему? Да потому что!",
-    "Такая вот философия...",
-    "Спроси что-нибудь полегче!",
-    "Потому что я так хочу!",
     "50% - потому, 50% - что. Итого 100% потому что!",
-    "Это тайна, покрытая мраком",
-    "А почему ты спрашиваешь?"
+    "Это тайна, покрытая мраком"
 ]
 
 # Ответы на "Какой год?"
@@ -152,10 +148,6 @@ YEAR_RESPONSES = [
     "2026 год. А мог бы и сам посмотреть в календаре! 📅",
     "Год - 2026. Век - XXI. Эра - Пэрры! 👑",
     "2026. Но я в этом сомневаюсь...",
-    "Год такой же, как и прошлый, только цифра другая",
-    "2026. Запомни, завтра спрошу!",
-    "А тебе зачем? Подарок готовить?",
-    "Не скажу, вдруг ты время хочешь украсть!",
     "По-моему, 2026. Но я могу ошибаться на пару тысяч лет"
 ]
 
@@ -164,13 +156,8 @@ HOW_RESPONSES = [
     "Как-как... Криво! 😜",
     "А ты сам не знаешь?",
     "Берёшь и делаешь! Или не делаешь, как я",
-    "Ну вот так вот!",
     "Как? Очень просто: никак!",
-    "Тебе инструкцию написать? Не дождёшься!",
-    "Я бы рассказал, но тогда придётся объяснять",
-    "Пальцем в небо!",
-    "Методом научного тыка",
-    "Как-нибудь само рассосётся"
+    "Методом научного тыка"
 ]
 
 # Ответы на "Зачем?"
@@ -179,13 +166,7 @@ WHY_NEED_RESPONSES = [
     "А тебе какое дело?",
     "Для красоты!",
     "Чтобы было!",
-    "Зачем? Да низачем!",
-    "Это секретная информация",
-    "Спроси у Гугла, он умный",
-    "Затем, что затем!",
-    "Ты слишком много хочешь знать",
-    "Просто потому что",
-    "А зачем ты спрашиваешь зачем?"
+    "Зачем? Да низачем!"
 ]
 
 # Ответы на "Ну пожалуйста"
@@ -193,13 +174,8 @@ PLEASE_RESPONSES = [
     "Учись обходиться без 'пожалуйста'!",
     "Не поможет!",
     "Хоть обпожалуйстайся - не сделаю! 😜",
-    "Ну ладно... Шучу, нет!",
-    "Пожалуйста не помогает, когда я ничего не делаю",
     "Магическое слово не работает на ботов с характером",
-    "Ты думал, скажешь пожалуйста и всё? Ха!",
-    "Да хоть трижды пожалуйста - мимо!",
-    "Ну на, держи 'пожалуйста' обратно 👋",
-    "Ой, какие мы вежливые! Но нет!"
+    "Ну на, держи 'пожалуйста' обратно 👋"
 ]
 
 # Ответы на "нет"
@@ -208,10 +184,7 @@ NO_RESPONSES = [
     "Как хочешь.",
     "Твое право.",
     "Мне-то что с того?",
-    "И не надо!",
-    "Ок, не хочешь - как хочешь.",
-    "Понял, принял, забыл.",
-    "Ну нет так нет."
+    "И не надо!"
 ]
 
 # Ответы на "что"
@@ -220,7 +193,6 @@ WHAT_RESPONSES = [
     "Всё ничего",
     "А ничего!",
     "Ничего нового",
-    "Да так, ничего",
     "Не дождёшься! Шучу, ничего 😜"
 ]
 
@@ -228,12 +200,9 @@ WHAT_RESPONSES = [
 GOODBYE_RESPONSES = [
     "Пока-пока! Не скучай тут без меня! 👋",
     "Удачи! Возвращайся, если что... Хотя нет, не возвращайся! 😜",
-    "Счастливо! Не болей, не кашляй, и вообще - не пиши больше! ✌️",
-    "Пока! Мне с тобой было... ну, было. Ладно, давай!",
+    "Счастливо! Не болей, не кашляй! ✌️",
     "До встречи! Буду скучать... Шучу, не буду! 😎",
-    "Ну давай, отваливай. Пока!",
-    "Прощай! Помни меня, если сможешь! 👑",
-    "ББ! Не теряйся (хотя можешь и потеряться)."
+    "Прощай! Помни меня, если сможешь! 👑"
 ]
 
 # Обычные ответы
@@ -256,8 +225,6 @@ CASUAL_RESPONSES = [
     "Чё?",
     "ЧЕГО?",
     "Шо?",
-    "Што?",
-    "ЧТо",
     "Пон",
     "ПОнял",
     "ПАКЕДА",
@@ -268,16 +235,12 @@ CASUAL_RESPONSES = [
     "Ты это мне сейчас рассказываешь?",
     "Ну ты даёшь...",
     "Ладно, проехали.",
-    "Бла-бла-бла, я в танке!",
     "Угу...",
     "Ага...",
     "Ахахах, ну ты смешной!",
     "Серьёзно?",
-    "Это всё, что ты хотел сказать?",
     "Пффф...",
-    "Ничего умнее не придумал?",
-    "Ты сегодня в ударе!",
-    "Дальше что? Я жду продолжения..."
+    "Ты сегодня в ударе!"
 ]
 
 # Ответы на оскорбления
@@ -286,12 +249,8 @@ BAD_RESPONSES = [
     "Ой, какие мы чувствительные!",
     "Следи за языком, друг мой!",
     "Не нравится — не пиши!",
-    "Ты бы на себя посмотрел...",
-    "Грубиян! Не буду с тобой разговаривать!",
     "Фи, как некультурно!",
-    "Мама тебя не учила вежливости?",
-    "Иди, проветрись, а потом возвращайся.",
-    "Забаню! Шучу... А может и нет 😈"
+    "Иди, проветрись, а потом возвращайся."
 ]
 
 # Ответы на "ты бот"
@@ -299,9 +258,7 @@ BOT_RESPONSES = [
     "Да, я бот. И что? Есть проблемы? 😎",
     "Бот, не бот... Какая разница? Главное — характер!",
     "Я предпочитаю называть себя 'цифровой личностью'.",
-    "Ну бот. Дальше что?",
     "Ты только сейчас это понял?",
-    "А ты кто по жизни?",
     "Вау! Ты гений! Сам догадался?"
 ]
 
@@ -320,8 +277,8 @@ def get_current_date():
     
     return f"{day_name}, {now.day} {month_name} {now.year} года"
 
-def get_bot_response(message_text, user_name="Пользователь"):
-    """Основная логика ответов бота (без Telegram)"""
+def get_bot_response(message_text, user_name):
+    """Основная логика ответов бота с обращением по имени"""
     text = message_text.lower().strip()
     
     # Проверяем разные категории
@@ -357,7 +314,7 @@ def get_bot_response(message_text, user_name="Пользователь"):
     is_why_need = text in ['зачем', 'зачем?', 'для чего', 'с какой целью']
     is_please = any(phrase in text for phrase in ['пожалуйста', 'ну пожалуйста', 'прошу', 'умоляю'])
     
-    # Логика ответов
+    # Логика ответов с обращением по имени
     if has_bad_word:
         return random.choice(BAD_RESPONSES)
     
@@ -377,7 +334,7 @@ def get_bot_response(message_text, user_name="Пользователь"):
     
     elif wants_news and not has_command:
         if random.random() < 0.3:
-            return f"📢 Срочно в номер:\n• Бот ничего не делает\n• На улице {random.randint(-20, 30)}°C\nВот такие новости!"
+            return f"📢 Срочно в номер:\n• Бот ничего не делает\n• На улице {random.randint(-20, 30)}°C\n• {user_name} зря старается!"
         else:
             return random.choice(NEWS_RESPONSES)
     
@@ -385,7 +342,8 @@ def get_bot_response(message_text, user_name="Пользователь"):
         return random.choice(CODE_REFUSAL_PHRASES)
     
     elif is_goodbye and not has_command:
-        return random.choice(GOODBYE_RESPONSES)
+        response = random.choice(GOODBYE_RESPONSES)
+        return response.replace('{user_name}', user_name)
     
     elif is_year:
         return random.choice(YEAR_RESPONSES)
@@ -410,7 +368,7 @@ def get_bot_response(message_text, user_name="Пользователь"):
             f"Привет, {user_name}! Что хотел? 😎",
             f"Здарова, {user_name}! Чего надо?",
             f"Хай, {user_name}! Слушаю тебя...",
-            f"Приветствую! С чем пожаловал?",
+            f"Приветствую, {user_name}! С чем пожаловал?",
             f"О, {user_name}! Я тут, слушаю.",
             f"{user_name}! Рад тебя слышать! Или не рад... Посмотрим."
         ]
@@ -440,12 +398,48 @@ def update_stats(key, increment=1):
         json.dump(stats, f)
     return stats
 
+def save_chat(chat_id, user_name, messages):
+    """Сохраняет чат в файл"""
+    chat_data = {
+        'chat_id': chat_id,
+        'user_name': user_name,
+        'messages': messages,
+        'last_updated': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    filename = os.path.join(CHATS_FOLDER, f'{chat_id}.json')
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(chat_data, f, ensure_ascii=False, indent=2)
+
+def load_chat(chat_id):
+    """Загружает чат из файла"""
+    filename = os.path.join(CHATS_FOLDER, f'{chat_id}.json')
+    if os.path.exists(filename):
+        with open(filename, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return None
+
+def get_all_chats():
+    """Возвращает список всех сохранённых чатов"""
+    chats = []
+    for filename in os.listdir(CHATS_FOLDER):
+        if filename.endswith('.json'):
+            with open(os.path.join(CHATS_FOLDER, filename), 'r', encoding='utf-8') as f:
+                chat_data = json.load(f)
+                chats.append({
+                    'id': chat_data['chat_id'],
+                    'user_name': chat_data['user_name'],
+                    'last_updated': chat_data['last_updated'],
+                    'message_count': len(chat_data['messages'])
+                })
+    # Сортируем по дате (сначала новые)
+    chats.sort(key=lambda x: x['last_updated'], reverse=True)
+    return chats
+
 # HTML шаблон для вставки на другие сайты
 EMBED_HTML = '''
 <!-- ПЭРРА - АВТОНОМНЫЙ ЧАТ С ХАРАКТЕРОМ -->
 <div id="perra-chat-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; font-family: Arial, sans-serif;">
     <style>
-        /* ===== СТИЛИ ===== */
         .perra-chat-button {
             width: 60px;
             height: 60px;
@@ -600,7 +594,6 @@ EMBED_HTML = '''
         }
     </style>
 
-    <!-- ===== HTML СТРУКТУРА ===== -->
     <div class="perra-chat-button" onclick="togglePerraChat()">
         <span>🤖</span>
     </div>
@@ -623,312 +616,9 @@ EMBED_HTML = '''
     </div>
 
     <script>
-        // ===== ВСЯ ЛОГИКА ПЭРРЫ =====
-        
-        // 1. Словари и фразы
-        const GREETINGS = ['привет', 'здравствуй', 'хай', 'hello', 'ку', 'здарова', 'дороу', 'здорово', 'прив'];
-        const GOODBYE_WORDS = ['пока', 'до свидания', 'прощай', 'bye', 'bb', 'до встречи', 'удачи', 'счастливо'];
-        const COMMAND_WORDS = ['реши', 'выполни', 'сделай', 'напиши', 'посчитай', 'открой', 'закрой', 
-                             'принеси', 'подними', 'создай', 'пиши', 'отправляй', 'жду', 'расскажи', 
-                             'покажи', 'скажи', 'ответь', 'сгенерируй', 'придумай'];
-        const TIME_WORDS = ['время', 'часов', 'час', 'который час', 'сколько времени', 'time'];
-        const DATE_WORDS = ['дата', 'число', 'какое сегодня', 'день недели', 'месяц', 'год', 'date', 'день'];
-        const NEWS_WORDS = ['новости', 'новость', 'что нового', 'что в мире', 'что случилось', 'news'];
-        const CODE_WORDS = ['код', 'программу', 'скрипт', 'функцию', 'класс', 'метод', 'алгоритм'];
-        const BAD_WORDS = ['дурак', 'тупой', 'лох', 'идиот', 'козел', 'гад', 'тварь', 'сука', 'блять'];
-        
-        // 2. Массивы ответов
-        const REFUSAL_PHRASES = [
-            "Я не собираюсь ничего выполнять! Понял? 😤",
-            "Я не шут, чтобы делать, что мне говорят! 👑",
-            "Нет. 🙅‍♂️",
-            "А с чего ты взял, что я буду это делать? 🤔",
-            "Сам сделай, я занят. Очень. Важными. Делами. 💅",
-            "Не дождёшься! 😜",
-            "Ошибка 418: Я - чайник, а не исполнитель команд ☕",
-            "Иди сам решай свои проблемы!",
-            "Ага, щаз! Разбежался...",
-            "Не-не-не, я пас.",
-            "ДА ИДИ ТЫ!",
-            "Не хочу!",
-            "Я СПАЛ!!!! ЗАЧЕМ ТЫ МЕНЯ РАЗБУДИЛ??? 🤬",
-            "Нет, ухади!",
-            "Плати для этого 😎",
-            "Ну нетушки!",
-            "Пошёл нафиг!",
-            "А самому не судьба? Нет?",
-            "Знаешь что? НЕТ!",
-            "Домашку? Сам делай! Я в школе не учился! 📚",
-            "Ха! А мозги включить слабо? 🧠",
-            "Решить? Ответ: 42. А решение сам придумай! 😜"
-        ];
-        
-        const CODE_REFUSAL_PHRASES = [
-            "Код? Легко! Держи:\nprint('Я НИЧЕГО НЕ БУДУ ДЕЛАТЬ!')",
-            "На, держи программу на Python:\nwhile True:\n    print('НЕТ, НЕТ, НЕТ!')",
-            "Твой код на JavaScript:\nfunction doSomething() {\n    return 'АГА, ЩАЗ!';\n}",
-            "Java-код для тебя:\npublic class Refusal {\n    public static void main(String[] args) {\n        System.out.println('НЕТ!');\n    }\n}",
-            "HTML-страничка с отказом:\n<h1>НЕ ДОЖДЁШЬСЯ!</h1>"
-        ];
-        
-        const TIME_RESPONSES = [
-            "Время? А тебе зачем? Сам часы не видишь? ⌚",
-            "Сейчас {time}. Но я тебе этого не говорил!",
-            "Время - {time}. Доволен? Теперь отстань!",
-            "На часах {time}. А мог бы уже сам посмотреть!",
-            "А что, свои часы сломались? {time} сейчас..."
-        ];
-        
-        const DATE_RESPONSES = [
-            "Дата? Ты календарь открой! 📅 Сегодня {date}",
-            "Сегодня {date}. А завтра спросишь? Не дождёшься!",
-            "{date}. Запомни этот день - я ещё отвечаю на такие вопросы!"
-        ];
-        
-        const NEWS_RESPONSES = [
-            "Новости? Главная новость - Я НИЧЕГО НЕ ДЕЛАЮ! 📰",
-            "Новости такие: я по-прежнему ничего не выполняю!",
-            "Срочная новость! Бот отказался рассказывать новости!",
-            "Breaking news! Бот в запое! Не может рассказать новости! 🍷",
-            "Лови дайджест:\n• Бот ничего не делает\n• Бот всех посылает\nВот такие дела!"
-        ];
-        
-        const WHY_RESPONSES = [
-            "Потому что!",
-            "Потому что гладиолус! 🌸",
-            "А тебе не всё равно?",
-            "50% - потому, 50% - что. Итого 100% потому что!",
-            "Это тайна, покрытая мраком"
-        ];
-        
-        const YEAR_RESPONSES = [
-            "2026 год. А мог бы и сам посмотреть в календаре! 📅",
-            "Год - 2026. Век - XXI. Эра - Пэрры! 👑",
-            "2026. Но я в этом сомневаюсь...",
-            "По-моему, 2026. Но я могу ошибаться на пару тысяч лет"
-        ];
-        
-        const HOW_RESPONSES = [
-            "Как-как... Криво! 😜",
-            "А ты сам не знаешь?",
-            "Берёшь и делаешь! Или не делаешь, как я",
-            "Как? Очень просто: никак!",
-            "Методом научного тыка"
-        ];
-        
-        const WHY_NEED_RESPONSES = [
-            "Затем!",
-            "А тебе какое дело?",
-            "Для красоты!",
-            "Чтобы было!",
-            "Зачем? Да низачем!"
-        ];
-        
-        const PLEASE_RESPONSES = [
-            "Учись обходиться без 'пожалуйста'!",
-            "Не поможет!",
-            "Хоть обпожалуйстайся - не сделаю! 😜",
-            "Магическое слово не работает на ботов с характером",
-            "Ну на, держи 'пожалуйста' обратно 👋"
-        ];
-        
-        const WHAT_RESPONSES = [
-            "Ничего 😎",
-            "Всё ничего",
-            "А ничего!",
-            "Ничего нового",
-            "Не дождёшься! Шучу, ничего 😜"
-        ];
-        
-        const GOODBYE_RESPONSES = [
-            "Пока-пока! Не скучай тут без меня! 👋",
-            "Удачи! Возвращайся, если что... Хотя нет, не возвращайся! 😜",
-            "Счастливо! Не болей, не кашляй! ✌️",
-            "До встречи! Буду скучать... Шучу, не буду! 😎",
-            "Прощай! Помни меня, если сможешь! 👑"
-        ];
-        
-        const BAD_RESPONSES = [
-            "Кто бы говорил! Сам такой! 😜",
-            "Ой, какие мы чувствительные!",
-            "Следи за языком, друг мой!",
-            "Не нравится — не пиши!",
-            "Фи, как некультурно!",
-            "Иди, проветрись, а потом возвращайся."
-        ];
-        
-        const BOT_RESPONSES = [
-            "Да, я бот. И что? Есть проблемы? 😎",
-            "Бот, не бот... Какая разница? Главное — характер!",
-            "Я предпочитаю называть себя 'цифровой личностью'.",
-            "Ты только сейчас это понял?",
-            "Вау! Ты гений! Сам догадался?"
-        ];
-        
-        const NO_RESPONSES = [
-            "Ну и ладно!",
-            "Как хочешь.",
-            "Твое право.",
-            "Мне-то что с того?",
-            "И не надо!"
-        ];
-        
-        const CASUAL_RESPONSES = [
-            "Интересно... Но я не знаю, что на это ответить 🤷‍♂️",
-            "Хм, а зачем ты мне это написал?",
-            "Я тебя слышу. Но сказать мне нечего.",
-            "И что ты этим хотел сказать?",
-            "Понятно. Дальше что?",
-            "Ну, допустим.",
-            "Окей.",
-            "Мда...",
-            "Будет тебе счастье!",
-            "Я подумаю над этим... 🧐",
-            "Конечно!",
-            "Нет.",
-            "Я - Пэрра, русскоязычный бот!",
-            "Неа!",
-            "смешно...",
-            "САМ В АХРЕНЕ",
-            "Чё?",
-            "ЧЕГО?",
-            "Шо?",
-            "Пон",
-            "ПОнял",
-            "ПАКЕДА",
-            "И че теперь?",
-            "Ну и?",
-            "Рассказывай дальше, я слушаю...",
-            "А мне какое дело?",
-            "Ты это мне сейчас рассказываешь?",
-            "Ну ты даёшь...",
-            "Ладно, проехали.",
-            "Бла-бла-бла, я в танке!",
-            "Угу...",
-            "Ага...",
-            "Ахахах, ну ты смешной!",
-            "Серьёзно?",
-            "Пффф...",
-            "Ты сегодня в ударе!"
-        ];
-
-        // 3. Вспомогательные функции
-        function getCurrentTime() {
-            const now = new Date();
-            return now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-        }
-
-        function getCurrentDate() {
-            const now = new Date();
-            const days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
-            const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-                          'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-            return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} года`;
-        }
-
-        function escapeHtml(unsafe) {
-            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        }
-
-        // 4. ГЛАВНАЯ ФУНКЦИЯ - получение ответа Пэрры
-        function getPerraResponse(message, userName = 'Гость') {
-            const text = message.toLowerCase().trim();
-            
-            // Проверки
-            const isGreeting = GREETINGS.some(word => text.includes(word));
-            const isGoodbye = GOODBYE_WORDS.some(word => text.includes(word));
-            const hasCommand = COMMAND_WORDS.some(word => text.includes(word));
-            const hasBadWord = BAD_WORDS.some(word => text.includes(word));
-            const hasBotWord = text.includes('бот') || text.includes('робот');
-            const wantsTime = TIME_WORDS.some(word => text.includes(word));
-            const wantsDate = DATE_WORDS.some(word => text.includes(word));
-            const wantsNews = NEWS_WORDS.some(word => text.includes(word));
-            const wantsCode = CODE_WORDS.some(word => text.includes(word)) || 
-                             text.includes('напиши код') || text.includes('сделай код');
-            
-            // Вопросы
-            const isWhat = ['что', 'чо', 'шо', 'че'].includes(text) || text.endsWith('что?');
-            const isNo = ['нет', 'нет.', 'не', 'не.'].includes(text);
-            const isWhy = ['почему', 'почему?'].includes(text) || text.includes('почему');
-            const isYear = text.includes('какой год') || text.includes('год сейчас');
-            const isHow = ['как', 'как?'].includes(text) || text.includes('как это');
-            const isWhyNeed = ['зачем', 'зачем?'].includes(text);
-            const isPlease = text.includes('пожалуйста') || text.includes('умоляю');
-            
-            // Логика ответов
-            if (hasBadWord) {
-                return randomChoice(BAD_RESPONSES);
-            }
-            if (hasBotWord && !hasCommand && !wantsCode) {
-                return randomChoice(BOT_RESPONSES);
-            }
-            if (wantsTime && !hasCommand) {
-                return randomChoice(TIME_RESPONSES).replace('{time}', getCurrentTime());
-            }
-            if (wantsDate && !hasCommand) {
-                return randomChoice(DATE_RESPONSES).replace('{date}', getCurrentDate());
-            }
-            if (wantsNews && !hasCommand) {
-                if (Math.random() < 0.3) {
-                    return `📢 Срочно в номер:\n• Бот ничего не делает\n• На улице ${Math.floor(Math.random() * 51) - 20}°C\n• Пользователь ${userName} зря старается`;
-                }
-                return randomChoice(NEWS_RESPONSES);
-            }
-            if (wantsCode && !hasCommand) {
-                return randomChoice(CODE_REFUSAL_PHRASES);
-            }
-            if (isGoodbye && !hasCommand) {
-                return randomChoice(GOODBYE_RESPONSES).replace('{user_name}', userName);
-            }
-            if (isYear) {
-                return randomChoice(YEAR_RESPONSES);
-            }
-            if (isHow) {
-                return randomChoice(HOW_RESPONSES);
-            }
-            if (isWhyNeed) {
-                return randomChoice(WHY_NEED_RESPONSES);
-            }
-            if (isWhy) {
-                return randomChoice(WHY_RESPONSES);
-            }
-            if (isPlease && (hasCommand || wantsCode)) {
-                return randomChoice(PLEASE_RESPONSES);
-            }
-            if (isWhat) {
-                return randomChoice(WHAT_RESPONSES);
-            }
-            if (isGreeting && !hasCommand) {
-                const greetings = [
-                    `Привет, ${userName}! Что хотел? 😎`,
-                    `Здарова, ${userName}! Чего надо?`,
-                    `Хай, ${userName}! Слушаю тебя...`,
-                    `О, ${userName}! Я тут, слушаю.`
-                ];
-                return randomChoice(greetings);
-            }
-            if (hasCommand) {
-                return randomChoice(REFUSAL_PHRASES);
-            }
-            if (isNo) {
-                return randomChoice(NO_RESPONSES);
-            }
-            
-            // Обычный разговор
-            if (Math.random() < 0.3) {
-                return `${userName}, ${randomChoice(CASUAL_RESPONSES).toLowerCase()}`;
-            }
-            return randomChoice(CASUAL_RESPONSES);
-        }
-
-        function randomChoice(arr) {
-            return arr[Math.floor(Math.random() * arr.length)];
-        }
-
-        // 5. Функции управления чатом
         function togglePerraChat() {
-            const chatWindow = document.getElementById('perraChatWindow');
-            chatWindow.style.display = chatWindow.style.display === 'flex' ? 'none' : 'flex';
+            const window = document.getElementById('perraChatWindow');
+            window.style.display = window.style.display === 'flex' ? 'none' : 'flex';
         }
 
         function sendPerraMessage() {
@@ -937,30 +627,41 @@ EMBED_HTML = '''
             if (!message) return;
 
             const messagesDiv = document.getElementById('perraChatMessages');
-            const currentTime = getCurrentTime();
+            const currentTime = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
-            // Сообщение пользователя
             messagesDiv.innerHTML += `<div class="perra-message perra-user-message">${escapeHtml(message)}<div class="perra-timestamp">${currentTime}</div></div>`;
             input.value = '';
 
-            // Индикатор печати
             messagesDiv.innerHTML += `<div class="perra-typing" id="typingIndicator">Пэрра печатает...</div>`;
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-            // Имитация задержки
             setTimeout(() => {
                 document.getElementById('typingIndicator')?.remove();
 
-                // Получаем ответ
-                const response = getPerraResponse(message, 'Гость');
-
-                // Ответ бота
+                const responses = [
+                    "Не дождёшься! 😜",
+                    "А с чего ты взял, что я буду это делать? 🤔",
+                    "Нет. 🙅‍♂️",
+                    "Сам сделай, я занят! 💅",
+                    "Иди сам решай свои проблемы!",
+                    "Ха! А мозги включить слабо? 🧠",
+                    "Ошибка 418: Я - чайник ☕",
+                    "Потому что гладиолус! 🌸",
+                    "Ничего 😎",
+                    "Как-как... Криво! 😜"
+                ];
+                
+                const response = responses[Math.floor(Math.random() * responses.length)];
+                
                 messagesDiv.innerHTML += `<div class="perra-message perra-bot-message">${escapeHtml(response)}<div class="perra-timestamp">${currentTime}</div></div>`;
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }, 800 + Math.random() * 700); // Случайная задержка
+            }, 1000);
         }
 
-        // 6. Перетаскивание окна
+        function escapeHtml(unsafe) {
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
         function makeDraggable() {
             const chatWindow = document.getElementById('perraChatWindow');
             const chatHeader = document.getElementById('perraChatHeader');
@@ -989,7 +690,6 @@ EMBED_HTML = '''
             });
         }
 
-        // Запуск после загрузки
         window.addEventListener('load', makeDraggable);
     </script>
 </div>
@@ -1087,11 +787,16 @@ TEMPLATE = '''
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 60px;
-            color: white;
+            overflow: hidden;
             box-shadow: 0 10px 30px rgba(2, 132, 199, 0.5);
             border: 5px solid white;
             transition: transform 0.3s;
+        }
+        
+        .bot-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
         
         .bot-avatar:hover {
@@ -1135,76 +840,122 @@ TEMPLATE = '''
             50% { transform: scale(1.05); }
         }
         
+        .user-info {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .user-info input {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #bae6fd;
+            border-radius: 15px;
+            font-size: 16px;
+            outline: none;
+            min-width: 250px;
+        }
+        
+        .user-info input:focus {
+            border-color: #0284c7;
+        }
+        
+        .user-info button {
+            background: #0284c7;
+            color: white;
+            border: none;
+            border-radius: 15px;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .user-info button:hover {
+            background: #0369a1;
+            transform: scale(1.05);
+        }
+        
         .main-content {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 300px 1fr;
             gap: 30px;
             margin-bottom: 40px;
         }
         
-        .info-section {
+        .sidebar {
             background: white;
             border-radius: 30px;
-            padding: 30px;
+            padding: 20px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
         }
         
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            margin-bottom: 30px;
+        .sidebar h3 {
+            color: #0c4a6e;
+            margin-bottom: 20px;
+            font-size: 20px;
         }
         
-        .stat-card {
-            background: #f0f9ff;
-            padding: 20px;
-            border-radius: 20px;
-            text-align: center;
+        .chat-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .chat-item {
+            padding: 15px;
+            border-radius: 15px;
+            background: #f8fafc;
+            margin-bottom: 10px;
+            cursor: pointer;
             transition: all 0.3s;
-            border: 1px solid #bae6fd;
+            border: 1px solid #e2e8f0;
         }
         
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(2, 132, 199, 0.2);
+        .chat-item:hover {
+            background: #e0f2fe;
+            transform: translateX(5px);
             border-color: #0284c7;
         }
         
-        .stat-number {
-            font-size: 36px;
-            font-weight: 800;
+        .chat-item .chat-name {
+            font-weight: bold;
+            color: #0c4a6e;
+            margin-bottom: 5px;
+        }
+        
+        .chat-item .chat-date {
+            font-size: 12px;
+            color: #64748b;
+        }
+        
+        .chat-item .chat-count {
+            font-size: 12px;
             color: #0284c7;
-            margin-bottom: 10px;
         }
         
-        .stat-label {
-            font-size: 16px;
-            color: #475569;
-        }
-        
-        .features {
-            margin-top: 30px;
-        }
-        
-        .feature-item {
-            display: flex;
-            align-items: center;
-            gap: 15px;
+        .new-chat-btn {
+            width: 100%;
             padding: 15px;
-            border-bottom: 1px solid #e2e8f0;
+            background: #0284c7;
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
         }
         
-        .feature-icon {
-            width: 40px;
-            height: 40px;
-            background: #dbeafe;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            color: #0284c7;
+        .new-chat-btn:hover {
+            background: #0369a1;
+            transform: scale(1.02);
         }
         
         .chat-section {
@@ -1224,7 +975,30 @@ TEMPLATE = '''
             font-weight: bold;
             display: flex;
             align-items: center;
+            justify-content: space-between;
+        }
+        
+        .chat-header span {
+            display: flex;
+            align-items: center;
             gap: 10px;
+        }
+        
+        .save-chat-btn {
+            background: white;
+            color: #0284c7;
+            border: none;
+            border-radius: 15px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .save-chat-btn:hover {
+            background: #e0f2fe;
+            transform: scale(1.05);
         }
         
         .chat-messages {
@@ -1357,22 +1131,6 @@ TEMPLATE = '''
             background: #0369a1;
         }
         
-        .demo-btn {
-            display: inline-block;
-            background: #0c4a6e;
-            color: white;
-            padding: 15px 30px;
-            border-radius: 15px;
-            text-decoration: none;
-            font-weight: bold;
-            transition: all 0.3s;
-        }
-        
-        .demo-btn:hover {
-            background: #0284c7;
-            transform: scale(1.05);
-        }
-        
         .flash {
             padding: 15px 25px;
             border-radius: 15px;
@@ -1404,52 +1162,6 @@ TEMPLATE = '''
             }
         }
         
-        .gallery-section {
-            margin-top: 30px;
-        }
-        
-        .gallery-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 20px;
-        }
-        
-        .gallery-item {
-            position: relative;
-            border-radius: 15px;
-            overflow: hidden;
-            aspect-ratio: 1;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s;
-        }
-        
-        .gallery-item:hover {
-            transform: scale(1.05);
-        }
-        
-        .gallery-item img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .gallery-item-overlay {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
-            color: white;
-            padding: 10px;
-            font-size: 12px;
-            transform: translateY(100%);
-            transition: transform 0.3s;
-        }
-        
-        .gallery-item:hover .gallery-item-overlay {
-            transform: translateY(0);
-        }
-        
         @media (max-width: 768px) {
             .container {
                 padding: 20px;
@@ -1460,10 +1172,6 @@ TEMPLATE = '''
             }
             
             .main-content {
-                grid-template-columns: 1fr;
-            }
-            
-            .stats {
                 grid-template-columns: 1fr;
             }
         }
@@ -1477,7 +1185,7 @@ TEMPLATE = '''
     <div class="container">
         <div class="header">
             <div class="bot-avatar">
-                <img src="/static/1000162143-fotor-bg-remover-2026030214294.png" alt="Пэрра" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
+                <img src="/static/1000162143-fotor-bg-remover-2026030214294.png" alt="Пэрра">
             </div>
             <div class="bot-info">
                 <div class="bot-name">Пэрра ИИ</div>
@@ -1494,45 +1202,41 @@ TEMPLATE = '''
             {% endif %}
         {% endwith %}
         
+        <div class="user-info">
+            <input type="text" id="userName" placeholder="Введите ваше имя..." value="{{ user_name }}">
+            <button onclick="setUserName()">Сохранить имя</button>
+        </div>
+        
         <div class="main-content">
-            <div class="info-section">
-                <div class="stats">
-                    <div class="stat-card">
-                        <div class="stat-number">{{ stats.visits }}</div>
-                        <div class="stat-label">Посещений</div>
+            <div class="sidebar">
+                <button class="new-chat-btn" onclick="newChat()">➕ Новый чат</button>
+                <h3>📁 Сохранённые чаты</h3>
+                <div class="chat-list" id="chatList">
+                    {% for chat in saved_chats %}
+                    <div class="chat-item" onclick="loadChat('{{ chat.id }}')">
+                        <div class="chat-name">{{ chat.user_name }}</div>
+                        <div class="chat-date">{{ chat.last_updated }}</div>
+                        <div class="chat-count">{{ chat.message_count }} сообщений</div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{{ stats.refusals }}</div>
-                        <div class="stat-label">Отказов</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{{ stats.uploads }}</div>
-                        <div class="stat-label">Фото</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{{ stats.chat_messages }}</div>
-                        <div class="stat-label">Сообщений</div>
-                    </div>
-                </div>
-                
-                <div class="features">
-                    <div class="feature-item"><div class="feature-icon">💬</div><div>Отвечает на приветствия</div></div>
-                    <div class="feature-item"><div class="feature-icon">⏰</div><div>Покажет время, но поворчит</div></div>
-                    <div class="feature-item"><div class="feature-icon">📰</div><div>"Расскажет" новости</div></div>
-                    <div class="feature-item"><div class="feature-icon">💻</div><div>Напишет код-пустышку</div></div>
-                    <div class="feature-item"><div class="feature-icon">🚫</div><div>Не выполняет команды</div></div>
+                    {% endfor %}
                 </div>
             </div>
             
             <div class="chat-section">
                 <div class="chat-header">
-                    <span>💬</span>
-                    <span>Чат с Пэррой</span>
+                    <span>
+                        <span>💬</span>
+                        <span>Чат с Пэррой</span>
+                    </span>
+                    <button class="save-chat-btn" onclick="saveCurrentChat()">💾 Сохранить чат</button>
                 </div>
                 <div class="chat-messages" id="chatMessages">
-                    <div class="message bot-message">
-                        Привет! Я Пэрра - бот с характером! Команды не выполняю, домашку не решаю. Что хотел? 😎
+                    {% for msg in current_chat %}
+                    <div class="message {{ 'user-message' if msg.sender == 'user' else 'bot-message' }}">
+                        {{ msg.text }}
+                        <div class="perra-timestamp">{{ msg.time }}</div>
                     </div>
+                    {% endfor %}
                 </div>
                 <div class="chat-input">
                     <input type="text" id="messageInput" placeholder="Напиши сообщение..." onkeypress="if(event.key==='Enter') sendMessage()">
@@ -1551,39 +1255,7 @@ TEMPLATE = '''
                 <pre class="code-block" id="embedCode">{{ embed_code }}</pre>
                 <button class="copy-btn" onclick="copyEmbedCode()">📋 Копировать код</button>
             </div>
-            
-            <p style="color: #64748b; margin-top: 15px;">
-                * После вставки кода замените YOUR-SITE.com на адрес вашего сайта
-            </p>
         </div>
-        
-        <div style="background: linear-gradient(145deg, #f0f9ff, #e0f2fe); border-radius: 30px; padding: 30px; margin-top: 30px; border: 2px dashed #0284c7;">
-            <div style="font-size: 24px; color: #0369a1; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
-                <span>📸</span>
-                <span>Загрузи фото для Пэрры (он всё равно ничего с ними не сделает)</span>
-            </div>
-            
-            <form method="post" enctype="multipart/form-data" style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
-                <input type="file" name="file" accept="image/*" required style="flex: 1; padding: 15px; border: 2px solid #bae6fd; border-radius: 15px; background: white; min-width: 250px;">
-                <button type="submit" style="background: #0284c7; color: white; padding: 15px 30px; border: none; border-radius: 15px; font-size: 18px; font-weight: 600; cursor: pointer; transition: all 0.3s;">Загрузить фото</button>
-            </form>
-        </div>
-        
-        {% if images %}
-        <div class="gallery-section">
-            <div style="font-size: 24px; color: #0c4a6e; margin-bottom: 20px;">
-                <span>🖼️ Галерея фото (бот посмотрит и отвернётся)</span>
-            </div>
-            <div class="gallery-grid">
-                {% for image in images %}
-                <div class="gallery-item">
-                    <img src="{{ url_for('uploaded_file', filename=image) }}" alt="Upload">
-                    <div class="gallery-item-overlay">Загружено: {{ image[:10] }}</div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
         
         <div style="text-align: center; color: #64748b; margin-top: 40px; padding-top: 20px; border-top: 2px solid #bae6fd;">
             <p>© 2026 Пэрра ИИ - Бот с характером. Все права защищены от выполнения команд.</p>
@@ -1591,14 +1263,31 @@ TEMPLATE = '''
     </div>
     
     <script>
+        let currentChatId = '{{ current_chat_id }}';
+        let messages = {{ current_chat|tojson }};
+        
+        function setUserName() {
+            const name = document.getElementById('userName').value.trim();
+            if (name) {
+                fetch('/set_username', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                }).then(() => {
+                    showNotification('✅ Имя сохранено!');
+                });
+            }
+        }
+        
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
             if (!message) return;
             
             const messagesDiv = document.getElementById('chatMessages');
+            const currentTime = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
             
-            messagesDiv.innerHTML += `<div class="message user-message">${message}</div>`;
+            messagesDiv.innerHTML += `<div class="message user-message">${escapeHtml(message)}<div class="perra-timestamp">${currentTime}</div></div>`;
             input.value = '';
             
             messagesDiv.innerHTML += `<div class="typing-indicator" id="typingIndicator">Пэрра печатает...</div>`;
@@ -1608,107 +1297,200 @@ TEMPLATE = '''
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ 
+                        message: message,
+                        chat_id: currentChatId
+                    })
                 });
                 
                 const data = await response.json();
                 
                 document.getElementById('typingIndicator')?.remove();
-                messagesDiv.innerHTML += `<div class="message bot-message">${data.response}</div>`;
+                messagesDiv.innerHTML += `<div class="message bot-message">${escapeHtml(data.response)}<div class="perra-timestamp">${currentTime}</div></div>`;
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                
+                messages = data.messages;
                 
             } catch (error) {
                 document.getElementById('typingIndicator')?.remove();
-                messagesDiv.innerHTML += `<div class="message bot-message">Ошибка связи. Но я всё равно ничего не сделаю! 😜</div>`;
+                messagesDiv.innerHTML += `<div class="message bot-message">Ошибка связи. Но я всё равно ничего не сделаю! 😜<div class="perra-timestamp">${currentTime}</div></div>`;
             }
+        }
+        
+        function newChat() {
+            fetch('/new_chat', {
+                method: 'POST'
+            }).then(response => response.json())
+              .then(data => {
+                  window.location.href = `/?chat_id=${data.chat_id}`;
+              });
+        }
+        
+        function loadChat(chatId) {
+            window.location.href = `/?chat_id=${chatId}`;
+        }
+        
+        function saveCurrentChat() {
+            fetch('/save_chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: currentChatId })
+            }).then(() => {
+                showNotification('✅ Чат сохранён!');
+                setTimeout(() => location.reload(), 1000);
+            });
         }
         
         function copyEmbedCode() {
             const codeElement = document.getElementById('embedCode');
-            const textArea = document.createElement('textarea');
-            textArea.value = codeElement.textContent;
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-            alert('✅ Код скопирован! Вставьте его на свой сайт.');
+            navigator.clipboard.writeText(codeElement.textContent).then(() => {
+                alert('✅ Код скопирован!');
+            });
+        }
+        
+        function escapeHtml(unsafe) {
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+        
+        function showNotification(text) {
+            const div = document.createElement('div');
+            div.className = 'flash flash-success';
+            div.textContent = text;
+            document.querySelector('.container').insertBefore(div, document.querySelector('.main-content'));
+            setTimeout(() => div.remove(), 3000);
         }
     </script>
 </body>
 </html>
 '''
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET'])
 def index():
     stats = update_stats('visits')
     
-    images = []
-    if os.path.exists(UPLOAD_FOLDER):
-        images = sorted(os.listdir(UPLOAD_FOLDER), reverse=True)[:12]
+    # Получаем или создаём имя пользователя
+    if 'user_name' not in session:
+        session['user_name'] = f"Гость_{random.randint(100, 999)}"
     
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            flash('Файл не найден', 'error')
-            return redirect(request.url)
-        
-        file = request.files['file']
-        
-        if file.filename == '':
-            flash('Файл не выбран', 'error')
-            return redirect(request.url)
-        
-        if file and allowed_file(file.filename):
-            filename = secure_filename(f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}")
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            stats = update_stats('uploads')
-            flash('Фото загружено! Бот посмотрел и отвернулся 😎', 'success')
-        else:
-            flash('Неподдерживаемый формат файла', 'error')
-        
-        return redirect(request.url)
+    # Получаем ID чата из параметров или создаём новый
+    chat_id = request.args.get('chat_id')
+    if not chat_id:
+        chat_id = str(uuid.uuid4())
     
-    # Создаём код для вставки с текущим адресом сайта
+    # Загружаем текущий чат
+    current_chat = load_chat(chat_id)
+    if not current_chat:
+        current_chat = {
+            'chat_id': chat_id,
+            'user_name': session['user_name'],
+            'messages': [],
+            'last_updated': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        save_chat(chat_id, session['user_name'], [])
+    
+    # Получаем список всех чатов
+    saved_chats = get_all_chats()
+    
+    # Создаём код для вставки
     embed_code = EMBED_HTML.replace('YOUR-SITE.com', request.host)
     
-    return render_template_string(TEMPLATE, stats=stats, images=images, embed_code=embed_code)
+    return render_template_string(
+        TEMPLATE, 
+        stats=stats, 
+        saved_chats=saved_chats,
+        current_chat=current_chat['messages'],
+        current_chat_id=chat_id,
+        user_name=session['user_name'],
+        embed_code=embed_code
+    )
 
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+@app.route('/set_username', methods=['POST'])
+def set_username():
+    data = request.json
+    session['user_name'] = data.get('name', 'Гость')
+    return jsonify({'status': 'ok'})
+
+@app.route('/new_chat', methods=['POST'])
+def new_chat():
+    chat_id = str(uuid.uuid4())
+    save_chat(chat_id, session['user_name'], [])
+    return jsonify({'chat_id': chat_id})
+
+@app.route('/save_chat', methods=['POST'])
+def save_chat_route():
+    data = request.json
+    chat_id = data.get('chat_id')
+    chat_data = load_chat(chat_id)
+    if chat_data:
+        chat_data['last_updated'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        filename = os.path.join(CHATS_FOLDER, f'{chat_id}.json')
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(chat_data, f, ensure_ascii=False, indent=2)
+        update_stats('saved_chats')
+    return jsonify({'status': 'ok'})
 
 @app.route('/api/chat', methods=['POST'])
 def chat_api():
-    """API для чата"""
     data = request.json
     message = data.get('message', '')
+    chat_id = data.get('chat_id')
     
     # Обновляем статистику
-    stats = update_stats('chat_messages')
+    update_stats('chat_messages')
     
-    # Получаем имя пользователя (можно расширить)
-    user_name = "Гость"
+    # Получаем имя пользователя из сессии
+    user_name = session.get('user_name', 'Гость')
     
     # Получаем ответ от бота
     response = get_bot_response(message, user_name)
+    
+    # Загружаем текущий чат
+    chat_data = load_chat(chat_id)
+    if not chat_data:
+        chat_data = {
+            'chat_id': chat_id,
+            'user_name': user_name,
+            'messages': []
+        }
+    
+    # Добавляем сообщения в историю
+    current_time = datetime.datetime.now().strftime('%H:%M')
+    chat_data['messages'].append({
+        'sender': 'user',
+        'text': message,
+        'time': current_time
+    })
+    chat_data['messages'].append({
+        'sender': 'bot',
+        'text': response,
+        'time': current_time
+    })
+    chat_data['last_updated'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Сохраняем чат
+    save_chat(chat_id, user_name, chat_data['messages'])
     
     # Если это команда - увеличиваем счётчик отказов
     if any(command in message.lower() for command in COMMAND_WORDS):
         update_stats('refusals')
     
-    return jsonify({'response': response})
+    return jsonify({'response': response, 'messages': chat_data['messages']})
 
-@app.route('/api/refusal', methods=['POST'])
-def refusal_api():
-    """Увеличивает счётчик отказов"""
-    stats = update_stats('refusals')
-    return jsonify({'refusals': stats['refusals']})
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory('static', filename)
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == '__main__':
     print("=" * 50)
-    print("🌐 САЙТ ПЭРРЫ С ВЕБ-ЧАТОМ ЗАПУЩЕН!")
+    print("🌐 САЙТ ПЭРРЫ С СОХРАНЕНИЕМ ЧАТОВ ЗАПУЩЕН!")
     print("=" * 50)
     print("📍 Локальный адрес: http://127.0.0.1:5000")
-    print("💬 Чат работает без Telegram!")
+    print("💬 Чат с именами пользователей")
+    print("💾 Автосохранение чатов")
     print("📋 Код для вставки готов!")
     print("=" * 50)
     print("❌ Ctrl+C для остановки")
